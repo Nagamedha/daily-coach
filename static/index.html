@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Coach</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Daily Coach</h1>
+        
+        <!-- Schedule Tracker Section -->
+        <div class="schedule-section">
+            <h2>Today's Schedule</h2>
+            
+            <!-- Date Selector -->
+            <div class="date-selector">
+                <label for="date-input">Date:</label>
+                <input type="date" id="date-input" />
+            </div>
+            
+            <div class="mode-selector">
+                <label>
+                    <input type="radio" name="mode" value="morning_gym" checked>
+                    Morning Gym
+                </label>
+                <label>
+                    <input type="radio" name="mode" value="evening_gym">
+                    Evening Gym
+                </label>
+                <label>
+                    <input type="radio" name="mode" value="no_gym">
+                    No Gym / Weekend
+                </label>
+            </div>
+            
+            <div id="blocks-container"></div>
+            
+            <div class="note-section">
+                <label for="note">Today's Note (optional):</label>
+                <textarea id="note" rows="3" placeholder="How are you feeling? Any thoughts about today?"></textarea>
+            </div>
+            
+            <div class="actions">
+                <button id="save-btn" onclick="saveDay()">Save Progress</button>
+                <button id="coach-btn" onclick="getCoaching()">How did I do today?</button>
+                <button id="export-btn" onclick="exportCSV()">Export CSV</button>
+            </div>
+            
+            <div id="coaching-response" class="coaching-response"></div>
+            
+            <div class="streaks">
+                <h3>Your Streaks</h3>
+                <div id="streaks-display"></div>
+            </div>
+        </div>
+        
+        <!-- Chat Interface Section -->
+        <div class="chat-section">
+            <h2>Chat with Your Coach</h2>
+            <div id="chat-messages" class="chat-messages"></div>
+            <div class="chat-input">
+                <input type="text" id="chat-input" placeholder="Ask me anything... (e.g., How am I doing?)" onkeypress="handleChatKeypress(event)">
+                <button onclick="sendChatMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const schedules = {{ schedules|safe }};
+        let currentMode = 'morning_gym';
+        let checkedBlocks = {};
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set today's date and max attribute
+            const today = new Date().toISOString().split('T')[0];
+            const dateInput = document.getElementById('date-input');
+            dateInput.value = today;
+            dateInput.setAttribute('max', today);
+            
+            // Update max attribute daily (check every hour)
+            setInterval(function() {
+                const currentDate = new Date().toISOString().split('T')[0];
+                dateInput.setAttribute('max', currentDate);
+            }, 3600000); // 3600000ms = 1 hour
+            
+            loadSchedule(currentMode);
+            loadStreaks();
+            loadConversation(today);
+            
+            // Mode change listener
+            document.querySelectorAll('input[name="mode"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    currentMode = this.value;
+                    loadSchedule(currentMode);
+                });
+            });
+            
+            // Date change listener
+            document.getElementById('date-input').addEventListener('change', function() {
+                const selectedDate = this.value;
+                loadDayData(selectedDate);
+                loadConversation(selectedDate);
+            });
+        });
+        
+        function loadSchedule(mode) {
+            const schedule = schedules[mode];
+            if (!schedule) return;
+            
+            const container = document.getElementById('blocks-container');
+            container.innerHTML = '';
+            checkedBlocks = {};
+            
+            schedule.blocks.forEach(block => {
+                const div = document.createElement('div');
+                div.className = 'block-item';
+                div.innerHTML = `
+                    <label>
+                        <input type="checkbox" id="block-${block.id}" onchange="updateChecked('${block.id}')">
+                        <span class="time">${block.time}</span>
+                        <span class="label">${block.label}</span>
+                    </label>
+                `;
+                container.appendChild(div);
+            });
+        }
+        
+        function loadDayData(date) {
+            fetch(`/api/log?date=${date}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && Object.keys(data).length > 0) {
+                        // Load mode and schedule if mode exists
+                        if (data.mode) {
+                            const modeRadio = document.querySelector(`input[name="mode"][value="${data.mode}"]`);
+                            if (modeRadio) {
+                                modeRadio.checked = true;
+                                currentMode = data.mode;
+                                loadSchedule(currentMode);
+                            }
+                        }
+                        
+                        // Load checked blocks
+                        if (data.checked) {
+                            checkedBlocks = data.checked;
+                            Object.keys(checkedBlocks).forEach(blockId => {
+                                const checkbox = document.getElementById(`block-${blockId}`);
+                                if (checkbox) {
+                                    checkbox.checked = checkedBlocks[blockId];
+                                }
+                            });
+                        }
+                        
+                        // Load note
+                        if (data.note) {
+                            document.getElementById('note').value = data.note;
+                        } else {
+                            document.getElementById('note').value = '';
+                        }
+                        
+                        // Load coaching message if exists
+                        if (data.coach_msg) {
+                            document.getElementById('coaching-response').innerHTML = `<p>${data.coach_msg}</p>`;
+                        } else {
+                            document.getElementById('coaching-response').innerHTML = '';
+                        }
+                    } else {
+                        // No data for this date - reset to defaults
+                        checkedBlocks = {};
+                        document.getElementById('note').value = '';
+                        document.getElementById('coaching-response').innerHTML = '';
+                        
+                        // Uncheck all boxes
+                        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                            cb.checked = false;
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading day data:', err);
+                    // On error, just clear the UI
+                    checkedBlocks = {};
+                    document.getElementById('note').value = '';
+                    document.getElementById('coaching-response').innerHTML = '';
+                });
+        }
+        
+        function updateChecked(blockId) {
+            const checkbox = document.getElementById(`block-${blockId}`);
+            checkedBlocks[blockId] = checkbox.checked;
+        }
+        
+        function saveDay() {
+            const date = document.getElementById('date-input').value;
+            const note = document.getElementById('note').value;
+            
+            const total = schedules[currentMode].blocks.length;
+            const done = Object.values(checkedBlocks).filter(v => v).length;
+            const score = Math.round((done / total) * 100);
+            
+            const data = {
+                date,
+                mode: currentMode,
+                checked: checkedBlocks,
+                done,
+                total,
+                score,
+                note
+            };
+            
+            fetch('/api/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(data => {
+                alert('Progress saved!');
+                loadStreaks();
+            })
+            .catch(err => alert('Error saving progress'));
+        }
+        
+        function getCoaching() {
+            const date = document.getElementById('date-input').value;
+            const note = document.getElementById('note').value;
+            
+            const total = schedules[currentMode].blocks.length;
+            const done = Object.values(checkedBlocks).filter(v => v).length;
+            const score = Math.round((done / total) * 100);
+            
+            const data = {
+                date,
+                mode: currentMode,
+                checked: checkedBlocks,
+                done,
+                total,
+                score,
+                note
+            };
+            
+            document.getElementById('coaching-response').innerHTML = 'Generating coaching feedback...';
+            
+            fetch('/api/coach', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(data => {
+                // Handle both success (data.message) and error (data.error) responses
+                if (data.message) {
+                    document.getElementById('coaching-response').innerHTML = `<p>${data.message}</p>`;
+                } else if (data.error) {
+                    document.getElementById('coaching-response').innerHTML = `<p>Error: ${data.error}</p>`;
+                } else {
+                    document.getElementById('coaching-response').innerHTML = '<p>Error: Unable to generate coaching feedback</p>';
+                }
+            })
+            .catch(err => {
+                document.getElementById('coaching-response').innerHTML = '<p>Error: Unable to connect to server</p>';
+            });
+        }
+        
+        function loadStreaks() {
+            fetch('/api/streaks')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('streaks-display').innerHTML = `
+                    <p>🏋️ Gym days: ${data.gym_days}</p>
+                    <p>📚 Study days: ${data.study_days}</p>
+                    <p>💼 Job application days: ${data.job_days}</p>
+                `;
+            })
+            .catch(err => console.error('Error loading streaks'));
+        }
+        
+        function exportCSV() {
+            window.location.href = '/api/export';
+        }
+        
+        function loadConversation(date) {
+            fetch(`/api/conversation?date=${date}`)
+                .then(res => res.json())
+                .then(data => {
+                    const messages = document.getElementById('chat-messages');
+                    messages.innerHTML = '';
+                    
+                    if (data.messages && data.messages.length > 0) {
+                        data.messages.forEach(msg => {
+                            addChatMessage(msg.sender, msg.text);
+                        });
+                    }
+                })
+                .catch(err => console.error('Error loading conversation:', err));
+        }
+        
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            const date = document.getElementById('date-input').value;
+            
+            if (!message) return;
+            
+            // Display user message
+            addChatMessage('user', message);
+            input.value = '';
+            
+            // Show loading
+            addChatMessage('coach', 'Thinking...');
+            
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message, date})
+            })
+            .then(res => res.json())
+            .then(data => {
+                // Remove loading message
+                const messages = document.getElementById('chat-messages');
+                if (messages.lastChild) {
+                    messages.removeChild(messages.lastChild);
+                }
+                
+                // Add coach response
+                if (data.response) {
+                    addChatMessage('coach', data.response);
+                } else if (data.error) {
+                    addChatMessage('coach', 'Error: ' + data.error);
+                } else {
+                    addChatMessage('coach', 'Sorry, I had trouble responding. Please try again.');
+                }
+            })
+            .catch(err => {
+                // Remove loading message
+                const messages = document.getElementById('chat-messages');
+                if (messages.lastChild) {
+                    messages.removeChild(messages.lastChild);
+                }
+                
+                addChatMessage('coach', 'Sorry, I had trouble responding. Please try again. Error: ' + err.message);
+            });
+        }
+        
+        function addChatMessage(sender, text) {
+            const messages = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = `chat-message ${sender}`;
+            div.innerHTML = `<strong>${sender === 'user' ? 'You' : 'Coach'}:</strong> ${text}`;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function handleChatKeypress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+    </script>
+</body>
+</html>

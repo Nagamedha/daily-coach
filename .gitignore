@@ -1,0 +1,93 @@
+# Environment variables - NEVER commit these!
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database files (local only)
+*.db
+*.sqlite
+*.sqlite3
+coach.db
+daily_log.csv
+
+# Vercel
+.vercel
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# Kiro specs (development only, not needed for deployment)
+.kiro/
+
+# Unnecessary documentation files (repetitive/redundant)
+docs/
+scripts/
+DEPLOYMENT.md
+DEPLOYMENT_GUIDE.md
+VERCEL_DEPLOYMENT_STEPS.md
+CLEAN_DEPLOYMENT_STEPS.md
+STATUS_REPORT.md
+PROJECT_FILES.txt
+MOCK_AI_MODE.md
+AI_TROUBLESHOOTING.md
+SETUP_GUIDE.md
+SUPABASE_GUIDE.md
+SWITCH_TO_OPENAI.md
+COACH_IMPROVEMENTS_COMPLETE.md
+
+# Migration helper scripts (not needed in production)
+migrations/create_table_direct.py
+migrations/execute_migration.py
+migrations/run_migration.py
+
+# Local test/setup scripts
+test_ai_connection.py
+test_setup.py
+start.sh
